@@ -18,6 +18,7 @@
 #if defined(WIN32)
 #include <ws2tcpip.h>
 #include <windows.h>
+#include <stdio.h>
 #ifndef snprintf
 #define snprintf _snprintf
 #endif

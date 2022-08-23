@@ -52,8 +52,10 @@ else()
   message( STATUS "OpenMAX libraries not found, skipping compilation of Raspberry Pi renderer" )
 endif()
 
+
+
 # Check for availability of gstreamer
-find_package( PkgConfig )
+find_package( PkgConfig)
 if( PKG_CONFIG_FOUND )
   pkg_check_modules( GST gstreamer-1.0>=1.4
                          gstreamer-sdp-1.0>=1.4
@@ -71,10 +73,38 @@ else()
   message( STATUS "pkg-config not found, skipping compilation of GStreamer renderer" )
 endif()
 
-# Create the renderers library and link against everything
+if(WIN32)
+
+  set( RENDERER_LINK_LIBS ${RENDERER_LINK_LIBS}
+  "${CMAKE_CURRENT_SOURCE_DIR}/SDL2-2.0.16/lib/x86/SDL2.lib"  
+  "${CMAKE_CURRENT_SOURCE_DIR}/SDL2-2.0.16/lib/x86/SDL2main.lib")
+
+  set( RENDERER_LINK_LIBS ${RENDERER_LINK_LIBS} 
+  "${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg/lib/avcodec.lib"  
+  "${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg/lib/avutil.lib" 
+  "${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg/lib/avformat.lib"
+  )
+  set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /SAFESEH:NO /NODEFAULTLIB:libc.lib")
+  include_directories("./SDL2-2.0.16/include" )
+  include_directories("./ffmpeg/include" )
+  set(BUILD_SHARED_LIBS "OFF")
+  add_subdirectory(fdk-aac EXCLUDE_FROM_ALL)
+  set( RENDERER_FLAGS "${RENDERER_FLAGS} -DHAS_SDL_RENDERER" )
+  set( RENDERER_SOURCES ${RENDERER_SOURCES} audio_renderer_sdl.c video_renderer_sdl.c )
+  set( RENDERER_LINK_LIBS ${RENDERER_LINK_LIBS} fdk-aac )
+
+endif()
+
+
 add_library( renderers STATIC ${RENDERER_SOURCES})
 target_link_libraries ( renderers ${RENDERER_LINK_LIBS} )
 target_include_directories( renderers PRIVATE ${RENDERER_INCLUDE_DIRS} )
+
+
+
+# Create the renderers library and link against everything
+
+
 
 # Pass the final renderer flags up to the parent scope so it knows which renderers
 # will be available to use.

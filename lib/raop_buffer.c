@@ -28,6 +28,12 @@
 #include "stream.h"
 
 #define RAOP_BUFFER_LENGTH 32
+//#define DUMP_AUDIO
+#ifdef DUMP_AUDIO
+static FILE* file_aac = NULL;
+static FILE* file_source = NULL;
+static FILE* file_keyiv = NULL;
+#endif
 
 typedef struct {
     /* Data available */
@@ -145,13 +151,9 @@ seqnum_cmp(unsigned short s1, unsigned short s2)
     return (s1 - s2);
 }
 
-//#define DUMP_AUDIO
 
-#ifdef DUMP_AUDIO
-static FILE* file_aac = NULL;
-static FILE* file_source = NULL;
-static FILE* file_keyiv = NULL;
-#endif
+
+
 
 
 int
@@ -161,13 +163,13 @@ raop_buffer_decrypt(raop_buffer_t *raop_buffer, unsigned char *data, unsigned ch
     int encryptedlen;
 #ifdef DUMP_AUDIO
     if (file_aac == NULL) {
-        file_aac = fopen("/home/pi/Airplay.aac", "wb");
-        file_source = fopen("/home/pi/Airplay.source", "wb");
-        file_keyiv = fopen("/home/pi/Airplay.keyiv", "wb");
+        file_aac = fopen("D:\\Airplay.aac", "wb");
+        file_source = fopen("D:\\Airplay.source", "wb");
+        file_keyiv = fopen("D:\\Airplay.keyiv", "wb");
     }
     // Undecrypted file
     if (file_source != NULL) {
-        fwrite(&data[12], payloadsize, 1, file_source);
+        fwrite(&data[12], payload_size, 1, file_source);
     }
 #endif
 
@@ -184,7 +186,7 @@ raop_buffer_decrypt(raop_buffer_t *raop_buffer, unsigned char *data, unsigned ch
 #ifdef DUMP_AUDIO
     // Decrypted file
     if (file_aac != NULL) {
-        fwrite(output, payloadsize, 1, file_aac);
+        fwrite(output, payload_size, 1, file_aac);
     }
 #endif
 

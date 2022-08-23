@@ -1,4 +1,4 @@
-/**
+﻿/**
  * RPiPlay - An open-source AirPlay mirroring server for Raspberry Pi
  * Copyright (C) 2019 Florian Draschbacher
  *
@@ -24,7 +24,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
+#ifndef WIN32
 #include <unistd.h>
+#endif
 
 typedef struct audio_renderer_dummy_s {
     audio_renderer_t base;
@@ -40,7 +42,7 @@ audio_renderer_t *audio_renderer_dummy_init(logger_t *logger, video_renderer_t *
     }
     renderer->base.logger = logger;
     renderer->base.funcs = &audio_renderer_dummy_funcs;
-    renderer->base.type = AUDIO_RENDERER_DUMMY;
+    renderer->base.type = AUDIO_RENDERER_SDL;
     return &renderer->base;
 }
 

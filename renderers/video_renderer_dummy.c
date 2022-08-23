@@ -24,8 +24,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
+#ifndef WIN32
 #include <unistd.h>
-
+#endif
 typedef struct video_renderer_dummy_s {
     video_renderer_t base;
 } video_renderer_dummy_t;

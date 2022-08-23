@@ -35,7 +35,12 @@
 #include "compat.h"
 #include "utils.h"
 
+
+#ifndef WIN32
 #include <dns_sd.h>
+#else
+#include "Bonjour/BonjourSDK/Include/dns_sd.h"
+#endif
 
 #define MAX_DEVICEID 18
 #define MAX_SERVNAME 256
@@ -60,8 +65,10 @@
 # endif
 
 typedef struct _DNSServiceRef_t *DNSServiceRef;
-typedef union _TXTRecordRef_t { char PrivateData[16]; char *ForceNaturalAlignment; } TXTRecordRef;
 
+#ifndef WIN32
+typedef union _TXTRecordRef_t { char PrivateData[16]; char *ForceNaturalAlignment; } TXTRecordRef;
+#endif
 typedef uint32_t DNSServiceFlags;
 typedef int32_t  DNSServiceErrorType;
 

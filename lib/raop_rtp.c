@@ -516,11 +516,15 @@ raop_rtp_thread_udp(void *arg)
 
     logger_log(raop_rtp->logger, LOGGER_DEBUG, "raop_rtp exiting thread");
 
+#ifdef WIN32
+    return NULL;
+#else
     return 0;
+#endif
 }
 
 // Start rtp service, three udp ports
-void
+THREAD_RETVAL
 raop_rtp_start_audio(raop_rtp_t *raop_rtp, int use_udp, unsigned short control_rport,
                      unsigned short *control_lport, unsigned short *data_lport)
 {
@@ -532,7 +536,11 @@ raop_rtp_start_audio(raop_rtp_t *raop_rtp, int use_udp, unsigned short control_r
     MUTEX_LOCK(raop_rtp->run_mutex);
     if (raop_rtp->running || !raop_rtp->joined) {
         MUTEX_UNLOCK(raop_rtp->run_mutex);
-        return;
+        #ifdef WIN32
+            return NULL;
+        #else
+            return;
+        #endif
     }
 
     /* Initialize ports and sockets */
@@ -544,7 +552,11 @@ raop_rtp_start_audio(raop_rtp_t *raop_rtp, int use_udp, unsigned short control_r
     if (raop_rtp_init_sockets(raop_rtp, use_ipv6, use_udp) < 0) {
         logger_log(raop_rtp->logger, LOGGER_ERR, "raop_rtp initializing sockets failed");
         MUTEX_UNLOCK(raop_rtp->run_mutex);
-        return;
+        #ifdef WIN32
+            return NULL;
+        #else
+            return;
+        #endif
     }
     if (control_lport) *control_lport = raop_rtp->control_lport;
     if (data_lport) *data_lport = raop_rtp->data_lport;

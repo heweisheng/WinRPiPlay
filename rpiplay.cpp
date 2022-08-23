@@ -1,4 +1,4 @@
-/**
+﻿/**
  * RPiPlay - An open-source AirPlay mirroring server for Raspberry Pi
  * Copyright (C) 2019 Florian Draschbacher
  *
@@ -20,15 +20,20 @@
 #include <stddef.h>
 #include <cstring>
 #include <signal.h>
+#ifndef WIN32
+#include <sys/socket.h>
+#include <ifaddrs.h>
 #include <unistd.h>
+#endif
 #include <string>
 #include <vector>
 #include <fstream>
 
-#include <sys/socket.h>
-#include <ifaddrs.h>
+
 #ifdef __linux__
 #include <netpacket/packet.h>
+#elif WIN32
+#include <windows.h>
 #else
 #include <net/if_dl.h>   /* macOS and *BSD */
 #endif
@@ -88,9 +93,15 @@ static const video_renderer_list_entry_t video_renderers[] = {
 #if defined(HAS_GSTREAMER_RENDERER)
     {"gstreamer", "GStreamer H.264 renderer", video_renderer_gstreamer_init},
 #endif
+#if defined(HAS_SDL_RENDERER)
+	{"sdl", "SDL renderer; SDL2 display video", video_renderer_sdl_init},
+#endif
+
 #if defined(HAS_DUMMY_RENDERER)
     {"dummy", "Dummy renderer; does not actually display video", video_renderer_dummy_init},
 #endif
+
+
 };
 
 static const audio_renderer_list_entry_t audio_renderers[] = {
@@ -99,6 +110,9 @@ static const audio_renderer_list_entry_t audio_renderers[] = {
 #endif
 #if defined(HAS_GSTREAMER_RENDERER)
     {"gstreamer", "GStreamer audio renderer", audio_renderer_gstreamer_init},
+#endif
+	#if defined(HAS_SDL_RENDERER)
+	{"sdl", "SDL renderer; SDL2 display audio", audio_renderer_sdl_init},
 #endif
 #if defined(HAS_DUMMY_RENDERER)
     {"dummy", "Dummy renderer; does not actually play audio", audio_renderer_dummy_init},
@@ -115,6 +129,10 @@ static void signal_handler(int sig) {
 }
 
 static void init_signals(void) {
+    #ifdef WIN32
+	signal(SIGINT, signal_handler);
+	signal(SIGTERM, signal_handler);
+	#else
     struct sigaction sigact;
 
     sigact.sa_handler = signal_handler;
@@ -122,6 +140,7 @@ static void init_signals(void) {
     sigact.sa_flags = 0;
     sigaction(SIGINT, &sigact, NULL);
     sigaction(SIGTERM, &sigact, NULL);
+    #endif
 }
 
 static int parse_hw_addr(std::string str, std::vector<char> &hw_addr) {
@@ -132,6 +151,9 @@ static int parse_hw_addr(std::string str, std::vector<char> &hw_addr) {
 }
 
 static std::string find_mac () {
+    #ifdef WIN32
+        return std::string();
+    #else
 /*  finds the MAC address of the first active network interface *
  *  in a Linux, *BSD or macOS system.                           */
     std::string mac_address = "";
@@ -169,6 +191,7 @@ static std::string find_mac () {
     }
     freeifaddrs(ifap);
     return mac_address;
+    #endif
 }
 
 static video_init_func_t find_video_init_func(const char *name) {
@@ -307,7 +330,11 @@ int main(int argc, char *argv[]) {
 
     running = true;
     while (running) {
-        sleep(1);
+        #ifdef WIN32
+            Sleep(1000);
+        #else
+            sleep(1);
+        #endif
     }
 
     LOGI("Stopping...");

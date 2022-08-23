@@ -1,3 +1,33 @@
+# win32版本魔改
+本项目从树莓派的投屏项目调整，主要用于研究airplay交互的方案。提供一份win32版本可运行的代码
+项目需要vcpkg做辅助，lib/CMakeLists.txt的cmakelists需要自己改成自己的vcpkg的路径
+```bash
+  SET(DCMAKE_TOOLCHAIN_FILE "H:/ffmpeg/source/vcpkg/scripts/buildsystems/vcpkg.cmake")
+  include("H:/ffmpeg/source/vcpkg/scripts/buildsystems/vcpkg.cmake")
+```
+
+需要用vcpkg下载如下内容:
+```bash
+./vcpkg install openssl:x86-windows
+./vcpkg install libplist:x86-windows
+./vcpkg install pthread:x86-windows
+```
+
+渲染器上ffmpeg sdl我已经自己提供了
+苹果的bonjour mdns服务也提供了，不需要自己添加,但是windows系统下需要安装下Bonjour的服务
+对应的安装包放到tool目录下了 64为系统安装Bonjour64.msi 32位则安装Bonjour.msi
+如果运行显示Could not initialize dnssd library!则得安装bonjour
+
+项目只提供了32位的编译环境，主要是我的win7没法用vcpkg做ffmpeg跟sdl的环境，而bonjour的mdns需要自己写cmake 想想还是算了，所有不能用vcpkg都自己配了
+如果后续有人要配64位再看看怎么做了，目前socket目前没有办法移植，有些选项直接注释掉了
+以下运行环境的dll列表
+从vcpkg下复制
+debug复制vcpkg\installed\x86-windows\debug\bin的
+release复制vcpkg\installed\x86-windows\bin
+如果把release复制到debug下 plist库会因为释放内存问题报错
+
+从本项目的renderers\ffmpeg\bin 所有的dll复制到执行目录下
+从本项目的renderers\SDL2-2.0.16\lib\x86\SDL2.dll复制到执行目录下
 # Introduction
 
 An open-source implementation of an AirPlay mirroring server for the Raspberry Pi.

@@ -9,3 +9,6 @@
 /build
 /captures
 .externalNativeBuild
+/lib/build
+/lib/llhttp/build
+/lib/playfair/build

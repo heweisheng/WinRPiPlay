@@ -219,6 +219,9 @@ raop_ntp_init_socket(raop_ntp_t *raop_ntp, int use_ipv6)
     return -1;
 }
 
+#ifdef WIN32
+#define ioctl ioctlsocket
+#endif
 static void
 raop_ntp_flush_socket(int fd)
 {
@@ -235,6 +238,28 @@ raop_ntp_flush_socket(int fd)
         }
     }
 }
+#ifdef WIN32
+int gettimeofday(struct timeval *tp, void *tzp)
+{
+  time_t clock;
+  struct tm tm;
+  SYSTEMTIME wtm;
+ 
+  GetLocalTime(&wtm);
+  tm.tm_year   = wtm.wYear  - 1900;
+  tm.tm_mon    = wtm.wMonth - 1;
+  tm.tm_mday   = wtm.wDay;
+  tm.tm_hour   = wtm.wHour;
+  tm.tm_min    = wtm.wMinute;
+  tm.tm_sec    = wtm.wSecond;
+  tm.tm_isdst  = -1;
+ 
+  clock = mktime(&tm);
+  tp->tv_sec   = clock;
+  tp->tv_usec  = wtm.wMilliseconds * 1000;
+  return (0);
+}
+#endif
 
 static THREAD_RETVAL
 raop_ntp_thread(void *arg)
@@ -430,7 +455,20 @@ uint64_t raop_ntp_timestamp_to_micro_seconds(uint64_t ntp_timestamp, bool accoun
  */
 uint64_t raop_ntp_get_local_time(raop_ntp_t *raop_ntp) {
     struct timespec time;
-    clock_gettime(CLOCK_REALTIME, &time);
+    #ifdef WIN32
+        FILETIME _n;
+        LARGE_INTEGER _n_tmp;
+        /* 获取到的时间是1601-01-01 00:00:00到现在的时间，单位是100ns */
+        GetSystemTimeAsFileTime(&_n);
+        /* 根据微软文档，需要将获取到的时间转成LARGE_INTEGER格式 */
+        _n_tmp.LowPart = _n.dwLowDateTime;
+        _n_tmp.HighPart = _n.dwHighDateTime;
+        ULONGLONG now_time = (ULONGLONG)((_n_tmp.QuadPart - 116444736000000000) * 100.0);
+        time.tv_sec=now_time/1000000;
+        time.tv_nsec=(long)(now_time/1000%1000);
+    #else
+        clock_gettime(CLOCK_REALTIME, &time);
+    #endif
     return (uint64_t)time.tv_sec * 1000000L + (uint64_t)(time.tv_nsec / 1000);
 }
 
