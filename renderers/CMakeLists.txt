@@ -87,12 +87,8 @@ if(WIN32)
   set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /SAFESEH:NO /NODEFAULTLIB:libc.lib")
   include_directories("./SDL2-2.0.16/include" )
   include_directories("./ffmpeg/include" )
-  set(BUILD_SHARED_LIBS "OFF")
-  add_subdirectory(fdk-aac EXCLUDE_FROM_ALL)
   set( RENDERER_FLAGS "${RENDERER_FLAGS} -DHAS_SDL_RENDERER" )
   set( RENDERER_SOURCES ${RENDERER_SOURCES} audio_renderer_sdl.c video_renderer_sdl.c )
-  set( RENDERER_LINK_LIBS ${RENDERER_LINK_LIBS} fdk-aac )
-
 endif()
 
 

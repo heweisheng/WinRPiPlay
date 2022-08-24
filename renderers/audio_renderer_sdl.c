@@ -24,7 +24,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
-#include "fdk-aac/libAACdec/include/aacdecoder_lib.h"
+//#include "fdk-aac/libAACdec/include/aacdecoder_lib.h"
+#include <libavcodec/avcodec.h>
 #include <SDL.h>
 
 #ifndef WIN32
@@ -44,42 +45,33 @@ typedef struct audio_renderer_sdl_s {
 	size_t framenum;
 	size_t readnum;
 	SDL_mutex* mutex;
-	HANDLE_AACDECODER audio_decoder;
+	AVCodecContext* aacctx;
 	SDL_AudioDeviceID deviceid;
 } audio_renderer_sdl_t;
 
 static const audio_renderer_funcs_t audio_renderer_sdl_funcs;
 
 static void audio_renderer_sdl_destroy_decoder(audio_renderer_sdl_t *renderer) {
-	aacDecoder_Close(renderer->audio_decoder);
+	avcodec_free_context(&renderer->aacctx);
 }
 
 static int audio_renderer_sdl_init_decoder(audio_renderer_sdl_t *renderer) {
 	int ret = 0;
-	renderer->audio_decoder = aacDecoder_Open(TT_MP4_RAW, 1);
-	if (renderer->audio_decoder == NULL) {
-		logger_log(renderer->base.logger, LOGGER_ERR, "aacDecoder open faild!");
-		return -1;
+	const AVCodec* aacdecode = avcodec_find_decoder(AV_CODEC_ID_AAC);
+	renderer->aacctx = avcodec_alloc_context3(aacdecode);
+	if (!renderer->aacctx)
+	{
+		ret = AVERROR(ENOMEM);
 	}
-	/* ASC config binary data */
-	UCHAR eld_conf[] = { 0xF8, 0xE8, 0x50, 0x00 };
-	UCHAR *conf[] = { eld_conf };
-	static UINT conf_len = sizeof(eld_conf);
-	ret = aacDecoder_ConfigRaw(renderer->audio_decoder, conf, &conf_len);
-	if (ret != AAC_DEC_OK) {
-		logger_log(renderer->base.logger, LOGGER_ERR, "Unable to set configRaw");
-		return -2;
+	else {
+		/* ASC config binary data */
+		uint8_t eld_conf[] = { 0xF8, 0xE8, 0x50, 0x00 };
+		renderer->aacctx->extradata_size = sizeof(eld_conf);
+		renderer->aacctx->extradata = av_mallocz(renderer->aacctx->extradata_size);
+		memcpy(renderer->aacctx->extradata, eld_conf, renderer->aacctx->extradata_size);
+		ret = avcodec_open2(renderer->aacctx, aacdecode, NULL);
 	}
-	CStreamInfo *aac_stream_info = aacDecoder_GetStreamInfo(renderer->audio_decoder);
-	if (aac_stream_info == NULL) {
-		logger_log(renderer->base.logger, LOGGER_ERR, "aacDecoder_GetStreamInfo failed!");
-		return -3;
-	}
-
-	logger_log(renderer->base.logger, LOGGER_DEBUG, "> stream info: channel = %d\tsample_rate = %d\tframe_size = %d\taot = %d\tbitrate = %d", \
-		aac_stream_info->channelConfig, aac_stream_info->aacSampleRate,
-		aac_stream_info->aacSamplesPerFrame, aac_stream_info->aot, aac_stream_info->bitRate);
-	return 1;
+	return ret;
 }
 
 void SDLCALL audio_renderer_sdl_callback(void * userdata, Uint8 * stream, int len)
@@ -127,7 +119,7 @@ audio_renderer_t *audio_renderer_sdl_init(logger_t *logger, video_renderer_t *vi
     renderer->base.logger = logger;
     renderer->base.funcs = &audio_renderer_sdl_funcs;
     renderer->base.type = AUDIO_RENDERER_SDL;
-	if (audio_renderer_sdl_init_decoder(renderer) != 1) {
+	if (audio_renderer_sdl_init_decoder(renderer) != 0) {
 		free(renderer);
 		renderer = NULL;
 	}
@@ -137,7 +129,7 @@ audio_renderer_t *audio_renderer_sdl_init(logger_t *logger, video_renderer_t *vi
 	SDL_AudioSpec dstspec;
 	wantspec.callback = audio_renderer_sdl_callback;
 	wantspec.channels = 2;
-	wantspec.format = AUDIO_S16SYS;
+	wantspec.format = AUDIO_F32SYS;
 	wantspec.freq = 44100;
 	wantspec.samples = 480;
 	wantspec.userdata = renderer;
@@ -152,35 +144,42 @@ static void audio_renderer_sdl_start(audio_renderer_t *renderer) {
 }
 
 static void audio_renderer_sdl_render_buffer(audio_renderer_t *renderer, raop_ntp_t *ntp, unsigned char *data, int data_len, uint64_t pts) {
-	audio_renderer_sdl_t* r = (audio_renderer_sdl_t*)renderer;
-	AAC_DECODER_ERROR error = 0;
 
-	UCHAR *p_buffer[1] = { data };
-	UINT buffer_size = data_len;
-	UINT bytes_valid = data_len;
-	error = aacDecoder_Fill(r->audio_decoder, p_buffer, &buffer_size, &bytes_valid);
-	if (error != AAC_DEC_OK) {
-		logger_log(renderer->logger, LOGGER_ERR, "aacDecoder_Fill error : %x", error);
-	}
-
-	INT time_data_size = 4 * 480;
-	INT_PCM *p_time_data = malloc(time_data_size); // The buffer for the decoded AAC frames
-	error = aacDecoder_DecodeFrame(r->audio_decoder, p_time_data, time_data_size, 0);
-	if (error != AAC_DEC_OK) {
-		logger_log(renderer->logger, LOGGER_ERR, "aacDecoder_DecodeFrame error : 0x%x", error);
-	}
-	if (r->framenum - r->readnum < MAXCACHE)
+	audio_renderer_sdl_t *r = (audio_renderer_sdl_t*)renderer;
+	AVFrame* pFrame = av_frame_alloc();
+	AVPacket* packet = av_packet_alloc();
+	packet->pts = pts;
+	int i = 0;
+	av_new_packet(packet, data_len);
+	memcpy(packet->data, data, data_len);
+	avcodec_send_packet(r->aacctx, packet);
+	if (avcodec_receive_frame(r->aacctx, pFrame) == 0)
 	{
-		SDL_LockMutex(r->mutex);
-		r->frames[r->framenum%MAXCACHE].buffer = r->frames[r->framenum%MAXCACHE].reader = (uint8_t*)p_time_data;
-		r->frames[r->framenum%MAXCACHE].len = time_data_size;
-		r->framenum++;
-		SDL_UnlockMutex(r->mutex);
+		if (r->framenum - r->readnum < MAXCACHE)
+		{
+			size_t len = pFrame->nb_samples * sizeof(float) * pFrame->channels;
+			float* data = malloc(len);
+			int i ,c;
+			//sdl不支持planar,要么用swr要么手动处理下
+			for (i = 0; i < pFrame->nb_samples; i++)
+			{
+				for (c = 0; c < pFrame->channels; c++)
+				{
+					data[pFrame->channels * i + c] = ((float*)pFrame->extended_data[c])[i];
+				}
+			}
 
+			SDL_LockMutex(r->mutex);
+			r->frames[r->framenum%MAXCACHE].buffer = r->frames[r->framenum%MAXCACHE].reader = (uint8_t*)data;
+			r->frames[r->framenum%MAXCACHE].len = len;
+			r->framenum++;
+			SDL_UnlockMutex(r->mutex);
+		}
 	}
-	else {
-		free(p_time_data);
-	}
+	av_frame_free(&pFrame);
+	av_packet_free(&packet);
+
+	
 }
 
 static void audio_renderer_sdl_set_volume(audio_renderer_t *renderer, float volume) {
