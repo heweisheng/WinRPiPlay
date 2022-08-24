@@ -404,7 +404,7 @@ int start_server(std::vector<char> hw_addr, std::string name, bool debug_log,
                  video_renderer_config_t const *video_config, audio_renderer_config_t const *audio_config) {
     raop_callbacks_t raop_cbs;
     memset(&raop_cbs, 0, sizeof(raop_cbs));
-    raop_cbs.conn_init = conn_init;
+    raop_cbs.conn_init = conn_init;//这个跟http的conn_init不是一回事
     raop_cbs.conn_destroy = conn_destroy;
     raop_cbs.audio_process = audio_process;
     raop_cbs.video_process = video_process;

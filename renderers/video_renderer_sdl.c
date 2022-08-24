@@ -17,6 +17,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
  */
 
+
 #include "video_renderer.h"
 
 #include <stdlib.h>
@@ -37,6 +38,7 @@ typedef struct video_renderer_sdl_s {
 	AVFrame* renderframe;
 	bool endrender;
 	SDL_mutex* mutex;
+	video_renderer_config_t config;
 } video_renderer_sdl_t;
 
 static const video_renderer_funcs_t video_renderer_sdl_funcs;
@@ -58,6 +60,26 @@ int video_render_sdl_init_decoder(video_renderer_sdl_t* render)
 
 	return ret;
 }
+static SDL_Rect calplay(int left,int top, int width, int height, int picwidth, int picheight)
+{
+	SDL_Rect rect;
+	int h, w, x, y;
+	AVRational aspect_ratio = av_make_q(picwidth, picheight);
+
+	h = height;
+	w = (int)av_rescale(h, aspect_ratio.num, aspect_ratio.den);
+	if (w > width) {
+		w = width;
+		h = (int)av_rescale(w, aspect_ratio.den, aspect_ratio.num);
+	}
+	x = (width - w) / 2;
+	y = (height - h) / 2;
+	rect.x = left+x;
+	rect.y = top+y;
+	rect.w = FFMAX((int)w, 1);
+	rect.h = FFMAX((int)h, 1);
+	return rect;
+}
 
 int SDLCALL video_renderer_sdl_thread (void *data)
 {
@@ -67,6 +89,7 @@ int SDLCALL video_renderer_sdl_thread (void *data)
 	SDL_Renderer* sdlrender=NULL;
 	SDL_Texture* sdltexture=NULL;
 	SDL_Event event;
+
 	SDL_Init(SDL_INIT_VIDEO);
 	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
 	sdlwnd= SDL_CreateWindow("RPiPlay", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 1280, 720, SDL_WINDOW_RESIZABLE);
@@ -149,7 +172,57 @@ int SDLCALL video_renderer_sdl_thread (void *data)
 			SDL_RenderClear(sdlrender);
 			if (sdltexture)
 			{
-				SDL_RenderCopy(sdlrender, sdltexture, NULL, NULL);
+				SDL_Rect rect;
+				int picwidth=width;
+				int picheight=height;
+				switch (renderer->config.flip)
+				{
+				case FLIP_VERTICAL:
+				{
+					if((renderer->config.rotation/90)&0x1)
+					{
+						picwidth=sdlheight;
+					}else{
+						picheight=sdlheight;
+					}
+					break;
+				}
+				case FLIP_HORIZONTAL:
+				{
+					if((renderer->config.rotation/90)&0x1)
+					{
+						picheight=sdlwidth;
+					}else{
+						picwidth=sdlwidth;
+					}
+					break;
+				}
+				case FLIP_BOTH:
+				{
+					if((renderer->config.rotation/90)&0x1)
+					{
+						picheight=sdlwidth;
+						picwidth=sdlheight;
+					}else{
+						picwidth=sdlwidth;
+						picheight=sdlheight;
+					}
+					break;
+				}
+				default:
+					break;
+				}
+
+				if (renderer->config.rotation == 90 || renderer->config.rotation == 270)
+				{
+					rect = calplay((sdlwidth - sdlheight) / 2, (sdlheight - sdlwidth) / 2, sdlheight, sdlwidth, picwidth, picheight);
+				}
+				else {
+					rect = calplay(0, 0, sdlwidth, sdlheight, picwidth, picheight);
+				}
+
+
+				SDL_RenderCopyEx(sdlrender, sdltexture, NULL, &rect,renderer->config.rotation,NULL, SDL_FLIP_NONE);
 			}
 			SDL_RenderPresent(sdlrender);
 		}
@@ -176,6 +249,7 @@ video_renderer_t *video_renderer_sdl_init(logger_t *logger, video_renderer_confi
 	renderer->endrender = false;
 	video_render_sdl_init_decoder(renderer);
 	renderer->renderthread = SDL_CreateThread(video_renderer_sdl_thread, "sdl_renderthread", renderer);
+	renderer->config = *config;
     return &renderer->base;
 }
 

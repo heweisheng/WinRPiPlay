@@ -1,4 +1,4 @@
-/**
+﻿/**
  *  Copyright (C) 2018  Juho Vähä-Herttua
  *
  *  This library is free software; you can redistribute it and/or
@@ -23,7 +23,21 @@
 
 typedef void (*raop_handler_t)(raop_conn_t *, http_request_t *,
                                http_response_t *, char **, int *);
-
+/**
+ * @brief
+ *                airplay查询设备信息
+ * @param[in]
+ *                
+ * @param[in,out] 
+ *                参数2,作用
+ * @return 
+ *                
+ * @remark
+ *                无
+ * @code
+ *                示例代码
+ * @endcode
+ */
 static void
 raop_handler_info(raop_conn_t *conn,
                   http_request_t *request, http_response_t *response,
