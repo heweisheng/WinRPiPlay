@@ -16,21 +16,21 @@
 #define AIRPLAYSERVER_STREAM_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 typedef struct {
-    int n_gop_index;
-    int frame_type;
-    int n_frame_poc;
+    int nal_count;
     unsigned char *data;
     int data_len;
-    unsigned int n_time_stamp;
     uint64_t pts;
 } h264_decode_struct;
 
 typedef struct {
     unsigned char *data;
     int data_len;
-    uint64_t pts;
-} aac_decode_struct;
+    uint64_t ntp_time;
+    uint64_t rtp_time;
+    unsigned short seqnum;
+} audio_decode_struct;
 
 #endif //AIRPLAYSERVER_STREAM_H

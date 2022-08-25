@@ -31,7 +31,7 @@
 #ifndef WIN32
 #include <unistd.h>
 #endif
-#define MAXCACHE 10
+#define MAXCACHE 50
 
 typedef struct audio_frame_s {
 	uint8_t* buffer;
@@ -45,31 +45,72 @@ typedef struct audio_renderer_sdl_s {
 	size_t framenum;
 	size_t readnum;
 	SDL_mutex* mutex;
-	AVCodecContext* aacctx;
+	AVCodecContext* audioctx;
 	SDL_AudioDeviceID deviceid;
 } audio_renderer_sdl_t;
 
 static const audio_renderer_funcs_t audio_renderer_sdl_funcs;
 
 static void audio_renderer_sdl_destroy_decoder(audio_renderer_sdl_t *renderer) {
-	avcodec_free_context(&renderer->aacctx);
+	avcodec_free_context(&renderer->audioctx);
 }
 
-static int audio_renderer_sdl_init_decoder(audio_renderer_sdl_t *renderer) {
+static int audio_renderer_sdl_init_decoder(audio_renderer_sdl_t *renderer,audio_renderer_format_t format) {
 	int ret = 0;
-	const AVCodec* aacdecode = avcodec_find_decoder(AV_CODEC_ID_AAC);
-	renderer->aacctx = avcodec_alloc_context3(aacdecode);
-	if (!renderer->aacctx)
+	const AVCodec* audiodecode;
+	switch (format)
+	{
+	case AUDIO_FMT_ALAC:
+		audiodecode=avcodec_find_decoder(AV_CODEC_ID_ALAC);
+		break;
+	case AUDIO_FMT_AAC_ELD:
+	//后两个不知道怎么复现场景
+	case AUDIO_FMT_AAC_LC:
+		audiodecode=avcodec_find_decoder(AV_CODEC_ID_AAC);
+		break;
+	case AUDIO_FMT_PCM:
+		audiodecode=avcodec_find_decoder(AV_CODEC_ID_PCM_S16LE);
+		break;
+	default:
+		break;
+	}
+	renderer->audioctx = avcodec_alloc_context3(audiodecode);
+	if (!renderer->audioctx)
 	{
 		ret = AVERROR(ENOMEM);
 	}
 	else {
 		/* ASC config binary data */
-		uint8_t eld_conf[] = { 0xF8, 0xE8, 0x50, 0x00 };
-		renderer->aacctx->extradata_size = sizeof(eld_conf);
-		renderer->aacctx->extradata = av_mallocz(renderer->aacctx->extradata_size);
-		memcpy(renderer->aacctx->extradata, eld_conf, renderer->aacctx->extradata_size);
-		ret = avcodec_open2(renderer->aacctx, aacdecode, NULL);
+		uint8_t eld_conf[] = { 0xF8, 0xE8, 0x50, 0x00 };//aac_eld 44100 2 s16 
+		uint8_t aaclc_conf[]={0x12,0x10};
+		uint32_t alac_conf[] = {0x24000000,0x63616c61,0x00000000,0x60010000,0x0a281000,0xff00020e,0x00000000,0x00000000,0x44ac0000};
+		switch(format)
+		{
+			case AUDIO_FMT_ALAC:
+			{
+				renderer->audioctx->extradata_size = sizeof(alac_conf);
+				renderer->audioctx->extradata = av_mallocz(renderer->audioctx->extradata_size);
+				memcpy(renderer->audioctx->extradata, alac_conf, renderer->audioctx->extradata_size);
+				break;
+			}
+			case AUDIO_FMT_AAC_ELD:
+			{
+				renderer->audioctx->extradata_size = sizeof(eld_conf);
+				renderer->audioctx->extradata = av_mallocz(renderer->audioctx->extradata_size);
+				memcpy(renderer->audioctx->extradata, eld_conf, renderer->audioctx->extradata_size);
+				break;
+			}
+			case AUDIO_FMT_AAC_LC:
+			{
+				renderer->audioctx->extradata_size = sizeof(aaclc_conf);
+				renderer->audioctx->extradata = av_mallocz(renderer->audioctx->extradata_size);
+				memcpy(renderer->audioctx->extradata, aaclc_conf, renderer->audioctx->extradata_size);
+				break;
+			}
+			default:
+			break;
+		}
+		ret = avcodec_open2(renderer->audioctx, audiodecode, NULL);
 	}
 	return ret;
 }
@@ -77,7 +118,7 @@ static int audio_renderer_sdl_init_decoder(audio_renderer_sdl_t *renderer) {
 void SDLCALL audio_renderer_sdl_callback(void * userdata, Uint8 * stream, int len)
 {
 	audio_renderer_sdl_t *renderer=(audio_renderer_sdl_t*)userdata;
-	SDL_LockMutex(renderer->mutex);
+	
 	int write = 0;
 	while (write < len)
 	{
@@ -103,7 +144,7 @@ void SDLCALL audio_renderer_sdl_callback(void * userdata, Uint8 * stream, int le
 			write = len;
 		}
 	}
-	SDL_UnlockMutex(renderer->mutex);
+	
 }
 
 audio_renderer_t *audio_renderer_sdl_init(logger_t *logger, video_renderer_t *video_renderer, audio_renderer_config_t const *config) {
@@ -119,24 +160,9 @@ audio_renderer_t *audio_renderer_sdl_init(logger_t *logger, video_renderer_t *vi
     renderer->base.logger = logger;
     renderer->base.funcs = &audio_renderer_sdl_funcs;
     renderer->base.type = AUDIO_RENDERER_SDL;
-	if (audio_renderer_sdl_init_decoder(renderer) != 0) {
-		free(renderer);
-		renderer = NULL;
-	}
-
 	renderer->mutex = SDL_CreateMutex();
-	SDL_AudioSpec wantspec;
-	SDL_AudioSpec dstspec;
-	wantspec.callback = audio_renderer_sdl_callback;
-	wantspec.channels = 2;
-	wantspec.format = AUDIO_F32SYS;
-	wantspec.freq = 44100;
-	wantspec.samples = 480;
-	wantspec.userdata = renderer;
-	wantspec.silence = 0;
-	SDL_Init(SDL_INIT_AUDIO);
-	renderer->deviceid = SDL_OpenAudioDevice(NULL, 0, &wantspec, &dstspec, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE | SDL_AUDIO_ALLOW_CHANNELS_CHANGE);
-	SDL_PauseAudioDevice(renderer->deviceid, 0);
+
+
 	return &renderer->base;
 }
 
@@ -145,6 +171,7 @@ static void audio_renderer_sdl_start(audio_renderer_t *renderer) {
 
 static void audio_renderer_sdl_render_buffer(audio_renderer_t *renderer, raop_ntp_t *ntp, unsigned char *data, int data_len, uint64_t pts) {
 
+
 	audio_renderer_sdl_t *r = (audio_renderer_sdl_t*)renderer;
 	AVFrame* pFrame = av_frame_alloc();
 	AVPacket* packet = av_packet_alloc();
@@ -152,28 +179,39 @@ static void audio_renderer_sdl_render_buffer(audio_renderer_t *renderer, raop_nt
 	int i = 0;
 	av_new_packet(packet, data_len);
 	memcpy(packet->data, data, data_len);
-	avcodec_send_packet(r->aacctx, packet);
-	if (avcodec_receive_frame(r->aacctx, pFrame) == 0)
+	avcodec_send_packet(r->audioctx, packet);
+	while (avcodec_receive_frame(r->audioctx, pFrame) == 0)
 	{
 		if (r->framenum - r->readnum < MAXCACHE)
 		{
-			size_t len = pFrame->nb_samples * sizeof(float) * pFrame->channels;
+			size_t len = av_samples_get_buffer_size(NULL,pFrame->channels,pFrame->nb_samples,pFrame->format,1);
 			float* data = malloc(len);
 			int i ,c;
-			//sdl不支持planar,要么用swr要么手动处理下
-			for (i = 0; i < pFrame->nb_samples; i++)
+			if(pFrame->format==AV_SAMPLE_FMT_FLTP)
 			{
-				for (c = 0; c < pFrame->channels; c++)
+			//sdl不支持planar,要么用swr要么手动处理下
+				for (i = 0; i < pFrame->nb_samples; i++)
 				{
-					data[pFrame->channels * i + c] = ((float*)pFrame->extended_data[c])[i];
+					for (c = 0; c < pFrame->channels; c++)
+					{
+						data[pFrame->channels * i + c] = ((float*)pFrame->extended_data[c])[i];
+					}
+				}
+			}else if(pFrame->format==AV_SAMPLE_FMT_S16P){
+				int16_t* s16data=data;
+				for (i = 0; i < pFrame->nb_samples; i++)
+				{
+					for (c = 0; c < pFrame->channels; c++)
+					{
+						s16data[pFrame->channels * i + c] = ((int16_t*)pFrame->extended_data[c])[i];
+					}
 				}
 			}
-
-			SDL_LockMutex(r->mutex);
 			r->frames[r->framenum%MAXCACHE].buffer = r->frames[r->framenum%MAXCACHE].reader = (uint8_t*)data;
 			r->frames[r->framenum%MAXCACHE].len = len;
 			r->framenum++;
-			SDL_UnlockMutex(r->mutex);
+		}else{
+			printf("drop frame\n");
 		}
 	}
 	av_frame_free(&pFrame);
@@ -203,10 +241,47 @@ static void audio_renderer_sdl_destroy(audio_renderer_t *renderer) {
     }
 }
 
+static void audio_renderer_sdl_setformat(audio_renderer_t *renderer,audio_renderer_format_t format) {
+
+	audio_renderer_sdl_t *r=(audio_renderer_sdl_t*)renderer;
+	SDL_Init(SDL_INIT_AUDIO);
+	if(r->deviceid)
+	{
+		SDL_PauseAudioDevice(r->deviceid, 1);
+		SDL_CloseAudioDevice(r->deviceid);
+	}
+	SDL_AudioSpec wantspec;
+	SDL_AudioSpec dstspec;
+	wantspec.callback = audio_renderer_sdl_callback;
+	wantspec.channels = 2;
+	if(format==AUDIO_FMT_AAC_ELD||format==AUDIO_FMT_AAC_LC)
+	{
+		wantspec.format = AUDIO_F32SYS;
+		wantspec.samples = 480;
+	}else if(format==AUDIO_FMT_ALAC){
+		wantspec.format = AUDIO_S16SYS;
+		wantspec.samples = 1024;
+	}else{
+		wantspec.format = AUDIO_S16SYS;
+		wantspec.samples = 480;
+	}
+	wantspec.freq = 44100;
+
+	wantspec.userdata = renderer;
+	wantspec.silence = 0;
+	r->deviceid = SDL_OpenAudioDevice(NULL, 0, &wantspec, &dstspec, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE | SDL_AUDIO_ALLOW_CHANNELS_CHANGE);
+	SDL_PauseAudioDevice(r->deviceid, 0);
+
+	audio_renderer_sdl_destroy_decoder(r);
+	audio_renderer_sdl_init_decoder(r,format);
+
+}
+
 static const audio_renderer_funcs_t audio_renderer_sdl_funcs = {
     .start = audio_renderer_sdl_start,
     .render_buffer = audio_renderer_sdl_render_buffer,
     .set_volume = audio_renderer_sdl_set_volume,
     .flush = audio_renderer_sdl_flush,
     .destroy = audio_renderer_sdl_destroy,
+	.setformat=audio_renderer_sdl_setformat,
 };

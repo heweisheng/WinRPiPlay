@@ -149,10 +149,16 @@ void audio_renderer_gstreamer_destroy(audio_renderer_t *renderer) {
     }
 }
 
+static void audio_renderer_gstreamer_setformat(audio_renderer_t *renderer,audio_renderer_format_t format) {
+
+}
+
 static const audio_renderer_funcs_t audio_renderer_gstreamer_funcs = {
     .start = audio_renderer_gstreamer_start,
     .render_buffer = audio_renderer_gstreamer_render_buffer,
     .set_volume = audio_renderer_gstreamer_set_volume,
     .flush = audio_renderer_gstreamer_flush,
     .destroy = audio_renderer_gstreamer_destroy,
+    .setformat=audio_renderer_gstreamer_setformat,
+
 };

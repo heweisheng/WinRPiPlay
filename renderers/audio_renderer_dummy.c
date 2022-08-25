@@ -63,6 +63,10 @@ static void audio_renderer_dummy_destroy(audio_renderer_t *renderer) {
         free(renderer);
     }
 }
+static void audio_renderer_dummy_setformat(audio_renderer_t *renderer,audio_renderer_format_t format)
+{
+
+}
 
 static const audio_renderer_funcs_t audio_renderer_dummy_funcs = {
     .start = audio_renderer_dummy_start,
@@ -70,4 +74,5 @@ static const audio_renderer_funcs_t audio_renderer_dummy_funcs = {
     .set_volume = audio_renderer_dummy_set_volume,
     .flush = audio_renderer_dummy_flush,
     .destroy = audio_renderer_dummy_destroy,
+    .setformat=audio_renderer_dummy_setformat,
 };

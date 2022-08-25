@@ -39,6 +39,13 @@ typedef enum audio_renderer_type_e {
 	AUDIO_RENDERER_SDL
 } audio_renderer_type_t;
 
+typedef enum audio_renderer_format_e{
+    AUDIO_FMT_AAC_ELD,
+    AUDIO_FMT_AAC_LC,
+    AUDIO_FMT_ALAC,
+    AUDIO_FMT_PCM
+}audio_renderer_format_t;
+
 typedef struct audio_renderer_config_s {
     audio_device_t device;
     bool low_latency;
@@ -52,6 +59,7 @@ typedef struct audio_renderer_funcs_s {
     void (*set_volume)(audio_renderer_t *renderer, float volume);
     void (*flush)(audio_renderer_t *renderer);
     void (*destroy)(audio_renderer_t *renderer);
+    void (*setformat)(audio_renderer_t *renderer,audio_renderer_format_t fmt);
 } audio_renderer_funcs_t;
 
 typedef struct audio_renderer_s {

@@ -21,11 +21,12 @@
 #include <string.h>
 #include <stdbool.h>
 
-#include "raop_ntp.h"
+#include "raop.h"
 #include "threads.h"
 #include "compat.h"
 #include "netutils.h"
 #include "byteutils.h"
+#include "utils.h"
 
 #define RAOP_NTP_DATA_COUNT   8
 #define RAOP_NTP_PHI_PPM   15ull                   // PPM
@@ -45,6 +46,9 @@ typedef struct raop_ntp_data_s {
 
 struct raop_ntp_s {
     logger_t *logger;
+    raop_callbacks_t callbacks;
+
+    int max_ntp_timeouts;
 
     thread_handle_t thread;
     mutex_handle_t run_mutex;
@@ -125,16 +129,19 @@ raop_ntp_parse_remote_address(raop_ntp_t *raop_ntp, const unsigned char *remote_
     return 0;
 }
 
-raop_ntp_t *raop_ntp_init(logger_t *logger, const unsigned char *remote_addr, int remote_addr_len, unsigned short timing_rport) {
+raop_ntp_t *raop_ntp_init(logger_t *logger, raop_callbacks_t *callbacks, const unsigned char *remote_addr,
+                          int remote_addr_len, unsigned short timing_rport) {
     raop_ntp_t *raop_ntp;
 
     assert(logger);
+    assert(callbacks);
 
     raop_ntp = calloc(1, sizeof(raop_ntp_t));
     if (!raop_ntp) {
         return NULL;
     }
     raop_ntp->logger = logger;
+    memcpy(&raop_ntp->callbacks, callbacks, sizeof(raop_callbacks_t));    
     raop_ntp->timing_rport = timing_rport;
 
     if (raop_ntp_parse_remote_address(raop_ntp, remote_addr, remote_addr_len) < 0) {
@@ -188,12 +195,9 @@ unsigned short raop_ntp_get_port(raop_ntp_t *raop_ntp) {
 static int
 raop_ntp_init_socket(raop_ntp_t *raop_ntp, int use_ipv6)
 {
-    int tsock = -1;
-    unsigned short tport = 0;
-
     assert(raop_ntp);
-
-    tsock = netutils_init_socket(&tport, use_ipv6, 1);
+    unsigned short tport = raop_ntp->timing_lport;
+    int tsock = netutils_init_socket(&tport, use_ipv6, 1);
 
     if (tsock == -1) {
         goto sockets_cleanup;
@@ -212,6 +216,7 @@ raop_ntp_init_socket(raop_ntp_t *raop_ntp, int use_ipv6)
 
     /* Set port values */
     raop_ntp->timing_lport = tport;
+    logger_log(raop_ntp->logger, LOGGER_DEBUG, "raop_ntp local timing port socket %d port UDP %d", tsock, tport);
     return 0;
 
     sockets_cleanup:
@@ -238,6 +243,7 @@ raop_ntp_flush_socket(int fd)
         }
     }
 }
+
 #ifdef WIN32
 int gettimeofday(struct timeval *tp, void *tzp)
 {
@@ -273,7 +279,9 @@ raop_ntp_thread(void *arg)
     };
     raop_ntp_data_t data_sorted[RAOP_NTP_DATA_COUNT];
     const unsigned  two_pow_n[RAOP_NTP_DATA_COUNT] = {2, 4, 8, 16, 32, 64, 128, 256};
-
+    int timeout_counter = 0;
+    bool conn_reset = false;
+      
     while (1) {
         MUTEX_LOCK(raop_ntp->run_mutex);
         if (!raop_ntp->running) {
@@ -290,7 +298,7 @@ raop_ntp_thread(void *arg)
         byteutils_put_ntp_timestamp(request, 24, send_time);
         int send_len = sendto(raop_ntp->tsock, (char *)request, sizeof(request), 0,
                               (struct sockaddr *) &raop_ntp->remote_saddr, raop_ntp->remote_saddr_len);
-        logger_log(raop_ntp->logger, LOGGER_DEBUG, "raop_ntp send_len = %d", send_len);
+        logger_log(raop_ntp->logger, LOGGER_DEBUG, "\nraop_ntp send_len = %d, now = %llu", send_len, send_time);
         if (send_len < 0) {
             logger_log(raop_ntp->logger, LOGGER_ERR, "raop_ntp error sending request");
         } else {
@@ -298,19 +306,36 @@ raop_ntp_thread(void *arg)
             response_len = recvfrom(raop_ntp->tsock, (char *)response, sizeof(response), 0,
                                     (struct sockaddr *) &raop_ntp->remote_saddr, &raop_ntp->remote_saddr_len);
             if (response_len < 0) {
-                logger_log(raop_ntp->logger, LOGGER_ERR, "raop_ntp receive timeout");
-            } else {
-                logger_log(raop_ntp->logger, LOGGER_DEBUG, "raop_ntp receive time type_t packetlen = %d", response_len);
-
+                timeout_counter++;
+                char time[28];
+                int level = (timeout_counter == 1 ? LOGGER_DEBUG : LOGGER_ERR);
+                ntp_timestamp_to_time(send_time, time, sizeof(time));
+                logger_log(raop_ntp->logger, level, "raop_ntp receive timeout %d (limit %d) (request sent %s)",
+                           timeout_counter, raop_ntp->max_ntp_timeouts, time);
+                if (timeout_counter ==  raop_ntp->max_ntp_timeouts) {
+                    conn_reset = true;   /* client is no longer responding */
+                    break;
+                }
+	    } else {
+                //local time of the server when the NTP response packet returns
                 int64_t t3 = (int64_t) raop_ntp_get_local_time(raop_ntp);
-                // Local time of the client when the NTP request packet leaves the client
+
+                timeout_counter = 0;
+                char *str = utils_data_to_string(response, response_len, 16);                   
+                logger_log(raop_ntp->logger, LOGGER_DEBUG, "raop_ntp receive time type_t=%d packetlen = %d\n%s",
+                           response[1] &~0x80, response_len, str);
+                free(str);
+
+                // Local time of the server when the NTP request packet leaves the server
                 int64_t t0 = (int64_t) byteutils_get_ntp_timestamp(response, 8);
-                // Local time of the server when the NTP request packet arrives at the server
+
+                // Local time of the client when the NTP request packet arrives at the client
                 int64_t t1 = (int64_t) byteutils_get_ntp_timestamp(response, 16);
-                // Local time of the server when the response message leaves the server
+
+                // Local time of the client when the response message leaves the client
                 int64_t t2 = (int64_t) byteutils_get_ntp_timestamp(response, 24);
 
-                // The iOS device sends its time in micro seconds relative to an arbitrary Epoch (the last boot).
+                // The iOS client device sends its time in micro seconds relative to an arbitrary Epoch (the last boot).
                 // For a little bonus confusion, they add SECONDS_FROM_1900_TO_1970 * 1000000 us.
                 // This means we have to expect some rather huge offset, but its growth or shrink over time should be small.
 
@@ -363,16 +388,24 @@ raop_ntp_thread(void *arg)
     MUTEX_UNLOCK(raop_ntp->run_mutex);
 
     logger_log(raop_ntp->logger, LOGGER_DEBUG, "raop_ntp exiting thread");
+    if (conn_reset && raop_ntp->callbacks.conn_reset) {
+        const bool video_reset = false;   /* leave "frozen video" in place */
+        raop_ntp->callbacks.conn_reset(raop_ntp->callbacks.cls, timeout_counter, video_reset);
+    }
     return 0;
 }
 
 void
-raop_ntp_start(raop_ntp_t *raop_ntp, unsigned short *timing_lport)
+raop_ntp_start(raop_ntp_t *raop_ntp, unsigned short *timing_lport, int max_ntp_timeouts)
 {
     logger_log(raop_ntp->logger, LOGGER_DEBUG, "raop_ntp starting time");
     int use_ipv6 = 0;
 
     assert(raop_ntp);
+    assert(timing_lport);
+
+    raop_ntp->max_ntp_timeouts = max_ntp_timeouts;
+    raop_ntp->timing_lport = *timing_lport;
 
     MUTEX_LOCK(raop_ntp->run_mutex);
     if (raop_ntp->running || !raop_ntp->joined) {
@@ -390,12 +423,12 @@ raop_ntp_start(raop_ntp_t *raop_ntp, unsigned short *timing_lport)
         MUTEX_UNLOCK(raop_ntp->run_mutex);
         return;
     }
-    if (timing_lport) *timing_lport = raop_ntp->timing_lport;
+    *timing_lport = raop_ntp->timing_lport;
 
     /* Create the thread and initialize running values */
     raop_ntp->running = 1;
     raop_ntp->joined = 0;
-
+    
     THREAD_CREATE(raop_ntp->thread, raop_ntp_thread, raop_ntp);
     MUTEX_UNLOCK(raop_ntp->run_mutex);
 }

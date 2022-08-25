@@ -34,12 +34,14 @@ typedef void (*raop_log_callback_t)(void *cls, int level, const char *msg);
 struct raop_callbacks_s {
     void* cls;
 
-    void  (*audio_process)(void *cls, raop_ntp_t *ntp, aac_decode_struct *data);
+    void  (*audio_process)(void *cls, raop_ntp_t *ntp, audio_decode_struct *data);
     void  (*video_process)(void *cls, raop_ntp_t *ntp, h264_decode_struct *data);
 
     /* Optional but recommended callback functions */
     void  (*conn_init)(void *cls);
     void  (*conn_destroy)(void *cls);
+    void  (*conn_reset) (void *cls, int timeouts, bool reset_video);
+    void  (*conn_teardown)(void *cls, bool *teardown_96, bool *teardown_110 );
     void  (*audio_flush)(void *cls);
     void  (*video_flush)(void *cls);
     void  (*audio_set_volume)(void *cls, float volume);
@@ -47,14 +49,19 @@ struct raop_callbacks_s {
     void  (*audio_set_coverart)(void *cls, const void *buffer, int buflen);
     void  (*audio_remote_control_id)(void *cls, const char *dacp_id, const char *active_remote_header);
     void  (*audio_set_progress)(void *cls, unsigned int start, unsigned int curr, unsigned int end);
+    void  (*audio_get_format)(void *cls, unsigned char *ct, unsigned short *spf, bool *usingScreen, bool *isMedia, uint64_t *audioFormat);
+    void  (*video_report_size)(void *cls, float *width_source, float *height_source, float *width, float *height);
 };
 typedef struct raop_callbacks_s raop_callbacks_t;
-
+raop_ntp_t *raop_ntp_init(logger_t *logger, raop_callbacks_t *callbacks, const unsigned char *remote_addr, int remote_addr_len, unsigned short timing_rport);
+  
 RAOP_API raop_t *raop_init(int max_clients, raop_callbacks_t *callbacks);
-
 RAOP_API void raop_set_log_level(raop_t *raop, int level);
 RAOP_API void raop_set_log_callback(raop_t *raop, raop_log_callback_t callback, void *cls);
+RAOP_API int raop_set_plist(raop_t *raop, const char *plist_item, const int value);
 RAOP_API void raop_set_port(raop_t *raop, unsigned short port);
+RAOP_API void raop_set_udp_ports(raop_t *raop, unsigned short port[3]);
+RAOP_API void raop_set_tcp_ports(raop_t *raop, unsigned short port[2]);
 RAOP_API unsigned short raop_get_port(raop_t *raop);
 RAOP_API void *raop_get_callback_cls(raop_t *raop);
 RAOP_API int raop_start(raop_t *raop, unsigned short *port);

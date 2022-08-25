@@ -16,6 +16,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <time.h>
+#include <stdint.h>
 
 char *
 utils_strsep(char **stringp, const char *delim)
@@ -178,4 +180,52 @@ char *utils_parse_hex(const char *str, int str_len, int *data_len) {
 
     *data_len = (str_len / 2);
     return data;
+}
+
+char *utils_data_to_string(const unsigned char *data, int datalen, int chars_per_line) {
+    int len = 3*datalen + ((datalen-1)/chars_per_line ) + 1;
+    char *str = (char *) calloc(len + 1, sizeof(char));
+    assert(str);
+    char *p = str;
+    for (int i = 0; i < datalen; i++) {
+        if (i > 0 && i % chars_per_line == 0) {
+            sprintf(p,"\n");
+            p++;
+        }
+        sprintf(p,"%2.2x ", (unsigned int) data[i]);
+        p += 3;
+    }
+    sprintf(p,"\n");
+    p++;
+    assert(p == &(str[len]));
+    assert(len == strlen(str));
+    return str;
+}
+
+char *utils_data_to_text(const char *data, int datalen) {
+    char *ptr = (char *) calloc(datalen + 1, sizeof(char));
+    assert(ptr);
+    strncpy(ptr, data, datalen);
+    char *p = ptr;
+    while (p) {
+        p  = strchr(p, '\r');  /* replace occurences of '\r' by ' ' */
+	if (p) *p = ' ';
+    }
+    return ptr;
+}
+
+void ntp_timestamp_to_time(uint64_t ntp_timestamp, char *timestamp, size_t maxsize) {
+    time_t rawtime = (time_t) (ntp_timestamp / 1000000);
+    struct tm ts = *localtime(&rawtime);
+    assert(maxsize > 26);
+    strftime(timestamp, 20, "%F %T", &ts);
+    snprintf(timestamp + 19, 8,".%6.6u", (unsigned int) ntp_timestamp % 1000000);
+}
+
+void ntp_timestamp_to_seconds(uint64_t ntp_timestamp, char *timestamp, size_t maxsize) {
+    time_t rawtime = (time_t) (ntp_timestamp / 1000000);
+    struct tm ts = *localtime(&rawtime);
+    assert(maxsize > 9);
+    strftime(timestamp, 3, "%S", &ts);
+    snprintf(timestamp + 2, 8,".%6.6u", (unsigned int) ntp_timestamp % 1000000);
 }

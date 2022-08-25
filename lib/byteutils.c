@@ -27,6 +27,7 @@
     #define ntohll(x) be64toh(x)
     #endif
 #endif
+
 // The functions in this file assume a little endian cpu architecture!
 
 /**

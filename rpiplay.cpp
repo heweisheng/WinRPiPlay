@@ -350,15 +350,15 @@ extern "C" void conn_destroy(void *cls) {
     if (video_renderer) video_renderer->funcs->update_background(video_renderer, -1);
 }
 
-extern "C" void audio_process(void *cls, raop_ntp_t *ntp, aac_decode_struct *data) {
+extern "C" void audio_process(void *cls, raop_ntp_t *ntp, audio_decode_struct *data) {
     if (audio_renderer != NULL) {
-        audio_renderer->funcs->render_buffer(audio_renderer, ntp, data->data, data->data_len, data->pts);
+        audio_renderer->funcs->render_buffer(audio_renderer, ntp, data->data, data->data_len, data->rtp_time);
     }
 }
 
 extern "C" void video_process(void *cls, raop_ntp_t *ntp, h264_decode_struct *data) {
     if (video_renderer != NULL) {
-        video_renderer->funcs->render_buffer(video_renderer, ntp, data->data, data->data_len, data->pts, data->frame_type);
+        video_renderer->funcs->render_buffer(video_renderer, ntp, data->data, data->data_len, data->pts, 0);
     }
 }
 
@@ -373,6 +373,27 @@ extern "C" void video_flush(void *cls) {
 extern "C" void audio_set_volume(void *cls, float volume) {
     if (audio_renderer != NULL) {
         audio_renderer->funcs->set_volume(audio_renderer, volume);
+    }
+}
+
+extern "C" void audio_get_format(void *cls, unsigned char *ct, unsigned short *spf, bool *usingScreen, bool *isMedia, uint64_t *audioFormat)
+{
+    audio_renderer_format_t fmt;
+    switch (*ct) {
+    case 2:
+        fmt = AUDIO_FMT_ALAC;
+        break;
+    case 8:
+        fmt = AUDIO_FMT_AAC_ELD;
+        break;
+    case 4:
+        fmt = AUDIO_FMT_AAC_LC;
+        break;
+    default:
+        break;
+    }
+    if (audio_renderer != NULL) {
+        audio_renderer->funcs->setformat(audio_renderer,fmt);
     }
 }
 
@@ -404,14 +425,15 @@ int start_server(std::vector<char> hw_addr, std::string name, bool debug_log,
                  video_renderer_config_t const *video_config, audio_renderer_config_t const *audio_config) {
     raop_callbacks_t raop_cbs;
     memset(&raop_cbs, 0, sizeof(raop_cbs));
+    //如果要做多投 这块要扩展身份处理 不然不知道是谁的数据
     raop_cbs.conn_init = conn_init;//这个跟http的conn_init不是一回事
-    raop_cbs.conn_destroy = conn_destroy;
+    raop_cbs.conn_destroy = conn_destroy;//同理
     raop_cbs.audio_process = audio_process;
     raop_cbs.video_process = video_process;
     raop_cbs.audio_flush = audio_flush;
     raop_cbs.video_flush = video_flush;
     raop_cbs.audio_set_volume = audio_set_volume;
-
+    raop_cbs.audio_get_format = audio_get_format;
     raop = raop_init(10, &raop_cbs);
     if (raop == NULL) {
         LOGE("Error initializing raop!");

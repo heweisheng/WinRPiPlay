@@ -1,4 +1,4 @@
-﻿/**
+/**
  *  Copyright (C) 2011-2012  Juho Vähä-Herttua
  *
  *  This library is free software; you can redistribute it and/or
@@ -22,7 +22,6 @@
 #include "http_request.h"
 #include "compat.h"
 #include "logger.h"
-#include "threads.h"
 
 struct http_connection_s {
     int connected;
@@ -367,11 +366,8 @@ httpd_thread(void *arg)
     MUTEX_UNLOCK(httpd->run_mutex);
 
     logger_log(httpd->logger, LOGGER_DEBUG, "Exiting HTTP thread");
-#ifdef WIN32
-    return NULL;
-#else
+
     return 0;
-#endif
 }
 
 int
