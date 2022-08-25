@@ -28,6 +28,9 @@ release复制vcpkg\installed\x86-windows\bin
 
 从本项目的renderers\ffmpeg\bin 所有的dll复制到执行目录下
 从本项目的renderers\SDL2-2.0.16\lib\x86\SDL2.dll复制到执行目录下
+
+2022/8/25
+内核改成uxplay，因为音频相关的逻辑Rpi没有做处理，alac没法处理，干脆用uxplay的把alac处理了。目前只处理了sdl的实例demo。添加一个ffmpeg解码器参数，其他的暂时不确定怎么添加
 # Introduction
 
 An open-source implementation of an AirPlay mirroring server for the Raspberry Pi.
