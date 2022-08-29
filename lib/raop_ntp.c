@@ -204,12 +204,19 @@ raop_ntp_init_socket(raop_ntp_t *raop_ntp, int use_ipv6)
     }
 
     // We're calling recvfrom without knowing whether there is any data, so we need a timeout
+#ifndef WIN32
     struct timeval tv;
     tv.tv_sec = 0;
     tv.tv_usec = 300000;
     if (setsockopt(tsock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
         goto sockets_cleanup;
     }
+#else
+    int iTimeout = 300;
+    if (setsockopt(tsock, SOL_SOCKET, SO_RCVTIMEO, &iTimeout, sizeof(iTimeout)) < 0) {
+        goto sockets_cleanup;
+    }
+#endif // !WIN32
 
     /* Set socket descriptors */
     raop_ntp->tsock = tsock;
