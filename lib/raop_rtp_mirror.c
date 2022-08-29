@@ -238,6 +238,7 @@ raop_rtp_mirror_thread(void *arg)
             }
 
             // We're calling recv for a certain amount of data, so we need a timeout
+#ifndef WIN32
             struct timeval tv;
             tv.tv_sec = 0;
             tv.tv_usec = 5000;
@@ -245,6 +246,13 @@ raop_rtp_mirror_thread(void *arg)
                 logger_log(raop_rtp_mirror->logger, LOGGER_ERR, "raop_rtp_mirror could not set stream socket timeout %d %s", errno, strerror(errno));
                 break;
             }
+#else
+            int timeout = 5000;//这里win32设置了5s，因为网络不稳定 or win10系统容易出问题 不确定是不是后两个导致非win系统没有出现超时的情况
+            if (setsockopt(stream_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+                logger_log(raop_rtp_mirror->logger, LOGGER_ERR, "raop_rtp_mirror could not set stream socket timeout %d %s", errno, strerror(errno));
+                break;
+            }
+#endif
             int option;
             option = 1;
             if (setsockopt(stream_fd, SOL_SOCKET, SO_KEEPALIVE, &option, sizeof(option)) < 0) {
