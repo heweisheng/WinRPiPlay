@@ -503,7 +503,7 @@ uint64_t raop_ntp_get_local_time(raop_ntp_t *raop_ntp) {
         /* 根据微软文档，需要将获取到的时间转成LARGE_INTEGER格式 */
         _n_tmp.LowPart = _n.dwLowDateTime;
         _n_tmp.HighPart = _n.dwHighDateTime;
-        ULONGLONG now_time = (ULONGLONG)((_n_tmp.QuadPart - 116444736000000000) * 100.0);
+        ULONGLONG now_time = (ULONGLONG)((_n_tmp.QuadPart - 116444736000000000) /10);
         time.tv_sec=now_time/1000000;
         time.tv_nsec=(long)(now_time/1000%1000);
     #else
